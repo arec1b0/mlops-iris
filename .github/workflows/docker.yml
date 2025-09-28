@@ -1,0 +1,44 @@
+name: CI/CD Pipeline
+
+on:
+    push:
+        branches: [main, master, develop]
+    pull_request:
+        branches: [main, master, develop]
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  python-version: "3.11"
+
+            - name: Install dependencies
+              run: |
+                  pip install --upgrade pip
+                  pip install -r requirements.txt
+
+            - name: Run tests
+              run: |
+                  python -m pytest tests/ -v --cov=src --cov-report=xml
+
+            - name: Train model (integration test)
+              run: python train.py --no-mlflow
+
+    build-and-deploy:
+        needs: test
+        runs-on: ubuntu-latest
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Build Docker image
+              run: docker build -t mlops-iris:${{ github.sha }} .
+
+            - name: Test Docker image
+              run: |
+                  docker run --rm mlops-iris:${{ github.sha }} python -c "from src.api.main import app; print('Docker build successful')"
