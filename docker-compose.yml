@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  mlops-iris:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:80"
+    environment:
+      - MODEL_PATH=/app/artifacts/model.pkl
+    volumes:
+      - ./artifacts:/app/artifacts:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Optional: Add MLflow tracking server
+  mlflow:
+    image: python:3.11-slim
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow.db
+      - MLFLOW_ARTIFACTS_DESTINATION=./mlruns
+    volumes:
+      - ./mlflow:/mlflow
+    command: >
+      bash -c "pip install mlflow[extras] psycopg2-binary &&
+               mlflow server --host 0.0.0.0 --port 5000
+               --backend-store-uri $MLFLOW_BACKEND_STORE_URI
+               --default-artifact-root $MLFLOW_ARTIFACTS_DESTINATION"
+    profiles:
+      - mlflow
