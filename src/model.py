@@ -2,61 +2,42 @@
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
-import joblib
 import mlflow
 import mlflow.sklearn
 from typing import Any, Tuple
-import os
 from pathlib import Path
+import onnxruntime as ort
+import numpy as np
+from skl2onnx import convert_sklearn
+from skl2onnx.common.data_types import FloatTensorType
+
+from .config import get_settings
 
 
 class IrisModel:
-    """Iris classification model wrapper with MLflow integration."""
+    """Iris classification model for prediction only."""
 
-    def __init__(self, model_path: str = "artifacts/model.pkl"):
+    def __init__(self, model_path: str = None):
         """
         Initialize the Iris model.
 
         Args:
-            model_path: Path to save/load the model
+            model_path: Path to the ONNX model file (uses config default if None)
         """
-        self.model_path = Path(model_path)
-        self.model = None
+        config = get_settings()
+        self.model_path = Path(model_path or config.model_path)
+        self.onnx_session = None
         self.target_names = ["setosa", "versicolor", "virginica"]
 
-    def train(self, X_train: Any, y_train: Any, max_iter: int = 200) -> "IrisModel":
-        """
-        Train the logistic regression model.
+    def load(self) -> "IrisModel":
+        """Load the ONNX model."""
+        if not self.model_path.exists():
+            raise FileNotFoundError(f"Model file not found: {self.model_path}")
 
-        Args:
-            X_train: Training features
-            y_train: Training labels
-            max_iter: Maximum iterations for convergence
-
-        Returns:
-            Self for method chaining
-        """
-        self.model = LogisticRegression(max_iter=max_iter, random_state=42)
-        self.model.fit(X_train, y_train)
+        # Load ONNX model
+        self.onnx_session = ort.InferenceSession(str(self.model_path))
+        print(f"ONNX model loaded from {self.model_path}")
         return self
-
-    def evaluate(self, X_test: Any, y_test: Any) -> float:
-        """
-        Evaluate model on test data.
-
-        Args:
-            X_test: Test features
-            y_test: Test labels
-
-        Returns:
-            Accuracy score
-        """
-        if self.model is None:
-            raise ValueError("Model not trained yet. Call train() first.")
-
-        predictions = self.model.predict(X_test)
-        accuracy = accuracy_score(y_test, predictions)
-        return accuracy
 
     def predict(self, features: Any) -> Tuple[int, str]:
         """
@@ -68,53 +49,109 @@ class IrisModel:
         Returns:
             Tuple of (prediction_class, class_name)
         """
-        if self.model is None:
+        if self.onnx_session is None:
             raise ValueError("Model not loaded. Call load() first.")
 
-        prediction = self.model.predict([features])[0]
+        # Convert features to numpy array and reshape for ONNX
+        input_array = np.array([features], dtype=np.float32)
+
+        # Run inference
+        outputs = self.onnx_session.run(None, {"input": input_array})
+        prediction = int(outputs[0][0])
+
         class_name = self.target_names[prediction]
-        return int(prediction), class_name
+        return prediction, class_name
 
-    def save(self, use_mlflow: bool = False) -> None:
-        """Save the trained model."""
-        if self.model is None:
-            raise ValueError("Model not trained yet. Call train() first.")
 
-        # Ensure artifacts directory exists
-        self.model_path.parent.mkdir(parents=True, exist_ok=True)
+class IrisTrainer:
+    """Handles model training and evaluation."""
 
-        if use_mlflow:
-            # Log model to MLflow
-            with mlflow.start_run():
-                mlflow.sklearn.log_model(self.model, "model")
-                print(f"Model logged to MLflow")
-        else:
-            # Save with joblib
-            joblib.dump(self.model, self.model_path)
-            print(f"Model saved to {self.model_path}")
+    def __init__(self):
+        """Initialize the trainer."""
+        self.model = None
 
-    def load(self) -> "IrisModel":
-        """Load a saved model."""
-        if not self.model_path.exists():
-            raise FileNotFoundError(f"Model file not found: {self.model_path}")
-
-        self.model = joblib.load(self.model_path)
-        print(f"Model loaded from {self.model_path}")
-        return self
-
-    def log_to_mlflow(self, accuracy: float) -> str:
+    def train(
+        self, X_train: Any, y_train: Any, max_iter: int = None
+    ) -> LogisticRegression:
         """
-        Log training metrics to MLflow.
+        Train the logistic regression model.
 
         Args:
+            X_train: Training features
+            y_train: Training labels
+            max_iter: Maximum iterations for convergence (uses config default if None)
+
+        Returns:
+            Trained model
+        """
+        config = get_settings()
+        max_iterations = max_iter or config.training_max_iter
+        random_state = config.training_random_state
+
+        self.model = LogisticRegression(
+            max_iter=max_iterations, random_state=random_state
+        )
+        self.model.fit(X_train, y_train)
+        return self.model
+
+    def evaluate(self, model: LogisticRegression, X_test: Any, y_test: Any) -> float:
+        """
+        Evaluate model on test data.
+
+        Args:
+            model: Trained model
+            X_test: Test features
+            y_test: Test labels
+
+        Returns:
+            Accuracy score
+        """
+        predictions = model.predict(X_test)
+        accuracy = accuracy_score(y_test, predictions)
+        return accuracy
+
+
+class ModelPersistence:
+    """Handles model saving and loading."""
+
+    def save_onnx_model(self, model: LogisticRegression, model_path: str) -> None:
+        """
+        Save model in ONNX format.
+
+        Args:
+            model: Trained model
+            model_path: Path to save the model
+        """
+        path = Path(model_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Define the input type for ONNX conversion
+        initial_type = [("input", FloatTensorType([None, 4]))]
+
+        # Convert the model to ONNX
+        onnx_model = convert_sklearn(model, initial_types=initial_type, target_opset=12)
+
+        # Save the ONNX model
+        with open(path, "wb") as f:
+            f.write(onnx_model.SerializeToString())
+
+        print(f"ONNX model saved to {path}")
+
+    def log_to_mlflow(self, model: LogisticRegression, accuracy: float) -> str:
+        """
+        Log model and metrics to MLflow.
+
+        Args:
+            model: Trained model
             accuracy: Model accuracy score
 
         Returns:
             MLflow run ID
         """
         with mlflow.start_run() as run:
+            mlflow.sklearn.log_model(model, "model")
             mlflow.log_metric("accuracy", accuracy)
-            print(f"MLflow run ID: {run.info.run_id}")
+            print(f"Model logged to MLflow with run ID: {run.info.run_id}")
             return run.info.run_id
 
 
@@ -123,8 +160,8 @@ def train_and_save_model(
     X_test: Any,
     y_train: Any,
     y_test: Any,
-    model_path: str = "artifacts/model.pkl",
-    use_mlflow: bool = True,
+    model_path: str = None,
+    use_mlflow: bool = None,
 ) -> Tuple[float, str]:
     """
     Train and save the Iris model.
@@ -134,26 +171,35 @@ def train_and_save_model(
         X_test: Test features
         y_train: Training labels
         y_test: Test labels
-        model_path: Path to save the model
-        use_mlflow: Whether to use MLflow for logging
+        model_path: Path to save the model (uses config default if None)
+        use_mlflow: Whether to use MLflow for logging (uses config default if None)
 
     Returns:
         Tuple of (accuracy, mlflow_run_id or empty string)
     """
+    config = get_settings()
+
+    # Use configuration defaults if not specified
+    save_path = model_path or config.model_path
+    enable_mlflow = use_mlflow if use_mlflow is not None else config.mlflow_enabled
+
+    # Initialize components
+    trainer = IrisTrainer()
+    persistence = ModelPersistence()
+
     # Train model
-    model = IrisModel(model_path)
-    model.train(X_train, y_train)
+    trained_model = trainer.train(X_train, y_train)
 
     # Evaluate
-    accuracy = model.evaluate(X_test, y_test)
+    accuracy = trainer.evaluate(trained_model, X_test, y_test)
     print(f"Accuracy: {accuracy:.2f}")
 
     # Log to MLflow if enabled
     run_id = ""
-    if use_mlflow:
-        run_id = model.log_to_mlflow(accuracy)
+    if enable_mlflow:
+        run_id = persistence.log_to_mlflow(trained_model, accuracy)
 
-    # Save model
-    model.save(use_mlflow=False)  # Always save locally for API
+    # Save model as ONNX
+    persistence.save_onnx_model(trained_model, save_path)
 
     return accuracy, run_id

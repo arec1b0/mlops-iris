@@ -1,0 +1,19 @@
+include README.md
+include requirements.txt
+include Dockerfile
+include docker-compose.yml
+include Makefile
+include pytest.ini
+include .pre-commit-config.yaml
+recursive-include scripts *
+recursive-include .github *
+recursive-include tests *
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+global-exclude *.tmp
+global-exclude *.bak
+global-exclude .coverage
+global-exclude .pytest_cache
+global-exclude htmlcov
+global-exclude .mypy_cache
+global-exclude .tox

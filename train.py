@@ -6,21 +6,25 @@ from pathlib import Path
 
 from src.data import load_iris_data, split_data
 from src.model import train_and_save_model
+from src.config import get_settings
 
 
 def main():
     """Main training function."""
+    # Load configuration
+    config = get_settings()
+
     parser = argparse.ArgumentParser(description="Train Iris classification model")
     parser.add_argument(
         "--model-path",
         type=str,
-        default="artifacts/model.pkl",
+        default=config.model_path,
         help="Path to save the trained model",
     )
     parser.add_argument(
         "--test-size",
         type=float,
-        default=0.2,
+        default=config.training_test_size,
         help="Proportion of data to use for testing",
     )
     parser.add_argument(
@@ -54,7 +58,7 @@ def main():
     )
 
     print("\nTraining completed!")
-    print(".2f")
+    print(f"Accuracy: {accuracy:.2f}")
     if run_id:
         print(f"MLflow run ID: {run_id}")
     print(f"Model saved to: {args.model_path}")

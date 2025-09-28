@@ -1,0 +1,35 @@
+# Example environment configuration for MLOps Iris API
+# Copy this file to .env and modify values as needed
+
+# API Configuration
+IRIS_API_HOST=0.0.0.0
+IRIS_API_PORT=8000
+IRIS_API_DEBUG=false
+
+# Model Configuration
+IRIS_MODEL_PATH=artifacts/model.onnx
+IRIS_MODEL_DEFAULT_PATH=artifacts/model.onnx
+
+# Training Configuration
+IRIS_TRAINING_TEST_SIZE=0.2
+IRIS_TRAINING_MAX_ITER=200
+IRIS_TRAINING_RANDOM_STATE=42
+
+# MLflow Configuration
+IRIS_MLFLOW_TRACKING_URI=sqlite:///mlruns.db
+IRIS_MLFLOW_EXPERIMENT_NAME=iris_classification
+IRIS_MLFLOW_ENABLED=true
+
+# Logging Configuration
+IRIS_LOG_LEVEL=INFO
+IRIS_LOG_FORMAT=%(asctime)s - %(name)s - %(levelname)s - %(message)s
+
+# Data Configuration
+IRIS_DATA_RANDOM_STATE=42
+
+# Production Environment Example:
+# IRIS_API_HOST=0.0.0.0
+# IRIS_API_PORT=80
+# IRIS_API_DEBUG=false
+# IRIS_LOG_LEVEL=WARNING
+# IRIS_MLFLOW_TRACKING_URI=http://mlflow-server:5000

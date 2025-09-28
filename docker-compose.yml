@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   mlops-iris:
@@ -8,7 +8,7 @@ services:
     ports:
       - "8000:80"
     environment:
-      - MODEL_PATH=/app/artifacts/model.pkl
+      - MODEL_PATH=/app/artifacts/model.onnx
     volumes:
       - ./artifacts:/app/artifacts:ro
     healthcheck:

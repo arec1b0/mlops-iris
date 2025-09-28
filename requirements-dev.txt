@@ -1,0 +1,32 @@
+# Development dependencies for MLOps Iris project
+# Install with: pip install -r requirements-dev.txt
+
+# Core development tools
+pytest>=7.4.0
+pytest-cov>=4.0.0
+pytest-mock>=3.11.1
+
+# Code quality tools
+black>=23.0.0
+ruff>=0.1.0
+mypy>=1.0.0
+pre-commit>=3.0.0
+
+# Documentation
+mkdocs>=1.5.0
+mkdocs-material>=9.0.0
+
+# Package building
+build>=0.10.0
+twine>=4.0.0
+
+# Additional testing
+locust>=2.15.0
+httpx>=0.24.0
+
+# Development server enhancements
+uvicorn[standard]>=0.20.0
+
+# Jupyter for examples
+jupyter>=1.0.0
+ipykernel>=6.0.0

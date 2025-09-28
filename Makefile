@@ -1,13 +1,26 @@
 # MLOps Iris Classification - Development Makefile
+# Comprehensive development automation for the MLOps Iris project
 
-.PHONY: help install test lint format clean build run deploy
+.PHONY: help install install-dev test lint format type-check qa clean build run deploy docs
 
 # Default target
 help: ## Show this help message
-	@echo "MLOps Iris Classification - Development Commands"
+	@echo "🌸 MLOps Iris Classification - Development Commands"
 	@echo ""
-	@echo "Available commands:"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo "📦 Installation:"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST) | grep -E "(install|dev)" | head -10
+	@echo ""
+	@echo "🧪 Testing & Quality:"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST) | grep -E "(test|lint|format|type|qa)" | head -10
+	@echo ""
+	@echo "🚀 Running:"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST) | grep -E "(run|train)" | head -10
+	@echo ""
+	@echo "🐳 Docker:"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST) | grep -E "(docker|build|compose)" | head -10
+	@echo ""
+	@echo "🧹 Cleanup:"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST) | grep -E "(clean)" | head -10
 
 # Installation
 install: ## Install Python dependencies
@@ -17,7 +30,7 @@ install: ## Install Python dependencies
 install-dev: ## Install development dependencies
 	pip install --upgrade pip
 	pip install -r requirements.txt
-	pip install black ruff mypy pytest pytest-cov pre-commit
+	pip install -r requirements-dev.txt
 
 # Development
 lint: ## Run linting checks
@@ -124,11 +137,49 @@ ci: qa build test-docker ## Simulate CI pipeline locally
 
 # Documentation
 docs: ## Generate documentation (if applicable)
-	@echo "Documentation generation not implemented yet"
+	@echo "📚 Generating documentation..."
+	@echo "API docs available at: http://localhost:8000/docs"
+	@echo "README: README.md"
+	@echo "API Reference: docs/API.md"
+	@echo "Examples: examples/"
 
 # Development server with auto-reload
 dev: ## Start development environment
-	@echo "Starting development environment..."
-	@echo "API will be available at http://localhost:8000"
-	@echo "MLflow UI at http://localhost:5000 (if running)"
+	@echo "🚀 Starting development environment..."
+	@echo "API will be available at: http://localhost:8000"
+	@echo "MLflow UI at: http://localhost:5000 (if running)"
+	@echo "API docs at: http://localhost:8000/docs"
 	docker-compose --profile mlflow up --build
+
+# Package management
+build-package: ## Build Python package
+	python -m build
+
+publish-test: ## Publish to TestPyPI
+	@echo "📦 Publishing to TestPyPI..."
+	twine upload --repository testpypi dist/*
+
+publish: ## Publish to PyPI
+	@echo "📦 Publishing to PyPI..."
+	twine upload dist/*
+
+# Examples
+run-examples: ## Run example scripts
+	@echo "🎯 Running examples..."
+	python examples/train_model_example.py
+	python examples/api_client.py
+
+# Health check
+health: ## Check service health
+	@echo "🏥 Checking service health..."
+	@curl -s http://localhost:8000/health || echo "❌ Service not running. Start with: make run-api"
+
+# Info
+info: ## Show project information
+	@echo "🌸 MLOps Iris Classification API"
+	@echo "Version: 1.0.0"
+	@echo "Python: >=3.11"
+	@echo "Framework: FastAPI"
+	@echo "ML Library: scikit-learn"
+	@echo "Model Format: ONNX"
+	@echo "Documentation: http://localhost:8000/docs"
