@@ -45,7 +45,7 @@ class PredictionRequest(BaseModel):
     ]  # 4 features: sepal_length, sepal_width, petal_length, petal_width
 
     model_config = ConfigDict(
-        json_schema_extra={"example": {"features": [5.1, 3.5, 1.4, 0.2]}}
+        json_schema_extra={"example": {"features": [5.1, 3.5, 1.4, 0.2]}},
     )
 
 
