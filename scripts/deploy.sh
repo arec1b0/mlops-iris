@@ -68,7 +68,7 @@ spec:
         - containerPort: 80
         env:
         - name: MODEL_PATH
-          value: "/app/artifacts/model.pkl"
+          value: "/app/artifacts/model.onnx"
         resources:
           requests:
             memory: "256Mi"

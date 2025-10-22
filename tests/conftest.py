@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from src.data import load_iris_data, split_data
-from src.model import IrisModel
+from src.model import IrisModel, IrisTrainer, ModelPersistence
 
 
 @pytest.fixture(scope="session")
@@ -28,8 +28,20 @@ def iris_data_split(iris_data):
 def trained_model(tmp_path, iris_data_split):
     """Create and return a trained Iris model."""
     X_train, X_test, y_train, y_test = iris_data_split
-    model = IrisModel(tmp_path / "test_model.pkl")
-    model.train(X_train, y_train)
+    
+    # Train model using IrisTrainer
+    trainer = IrisTrainer()
+    trained_sklearn_model = trainer.train(X_train, y_train)
+    
+    # Save as ONNX using ModelPersistence
+    model_path = tmp_path / "test_model.onnx"
+    persistence = ModelPersistence()
+    persistence.save_onnx_model(trained_sklearn_model, str(model_path))
+    
+    # Load the ONNX model for predictions
+    model = IrisModel(str(model_path))
+    model.load()
+    
     return model, X_test, y_test
 
 
@@ -118,18 +130,22 @@ def validate_iris_prediction(prediction_data):
     assert isinstance(prediction_data["confidence"], (int, float))
 
 
-def create_test_model_file(tmp_path, model_name="test_model.pkl"):
+def create_test_model_file(tmp_path, model_name="test_model.onnx"):
     """Create a test model file for API testing."""
     from src.data import load_iris_data, split_data
-    from src.model import IrisModel
+    from src.model import IrisTrainer, ModelPersistence
 
     X, y, _ = load_iris_data()
     X_train, X_test, y_train, y_test = split_data(X, y, test_size=0.2, random_state=42)
 
+    # Train model using IrisTrainer
+    trainer = IrisTrainer()
+    trained_model = trainer.train(X_train, y_train)
+    
+    # Save as ONNX using ModelPersistence
     model_path = tmp_path / model_name
-    model = IrisModel(str(model_path))
-    model.train(X_train, y_train)
-    model.save()
+    persistence = ModelPersistence()
+    persistence.save_onnx_model(trained_model, str(model_path))
 
     return str(model_path)
 
