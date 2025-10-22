@@ -37,9 +37,9 @@ RUN groupadd -r mlops && useradd -r -g mlops mlops
 WORKDIR /app
 
 # Copy requirements and install only runtime dependencies
-COPY requirements.txt .
+COPY requirements-runtime.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements-runtime.txt
 
 # Copy source code from builder stage
 COPY --from=builder /app/src/ ./src/
