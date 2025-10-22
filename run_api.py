@@ -18,7 +18,7 @@ def main():
     parser.add_argument(
         "--model-path",
         type=str,
-        default="artifacts/model.pkl",
+        default="artifacts/model.onnx",
         help="Path to the trained model file",
     )
     parser.add_argument(

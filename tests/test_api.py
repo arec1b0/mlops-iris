@@ -28,17 +28,20 @@ def sample_features():
 def trained_model_file(tmp_path):
     """Create a trained model file for testing."""
     from src.data import load_iris_data, split_data
-    from src.model import IrisModel
+    from src.model import IrisTrainer, ModelPersistence
 
     # Load and split data
     X, y, _ = load_iris_data()
     X_train, X_test, y_train, y_test = split_data(X, y, test_size=0.2, random_state=42)
 
-    # Train and save model
-    model_path = tmp_path / "test_model.pkl"
-    model = IrisModel(str(model_path))
-    model.train(X_train, y_train)
-    model.save()
+    # Train model using IrisTrainer
+    trainer = IrisTrainer()
+    trained_model = trainer.train(X_train, y_train)
+
+    # Save model using ModelPersistence
+    model_path = tmp_path / "test_model.onnx"
+    persistence = ModelPersistence()
+    persistence.save_onnx_model(trained_model, str(model_path))
 
     return str(model_path)
 

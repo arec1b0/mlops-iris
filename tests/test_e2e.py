@@ -11,6 +11,7 @@ import signal
 import psutil
 from pathlib import Path
 import json
+import numpy as np
 
 
 class TestEndToEnd:
@@ -54,7 +55,7 @@ class TestEndToEnd:
             assert len(X_test) == 30
 
             # Step 3: Train and save model
-            model_path = temp_workspace / "e2e_model.pkl"
+            model_path = temp_workspace / "e2e_model.onnx"
             accuracy, run_id = train_and_save_model(
                 X_train,
                 X_test,
@@ -122,7 +123,7 @@ class TestEndToEnd:
             assert "Model saved" in result.stdout
 
             # Check that model file was created
-            model_file = temp_workspace / "artifacts" / "model.pkl"
+            model_file = temp_workspace / "artifacts" / "model.onnx"
             assert model_file.exists()
 
         finally:
@@ -146,7 +147,7 @@ class TestEndToEnd:
             from src.model import IrisModel
 
             # Test loading non-existent model
-            model = IrisModel("nonexistent.pkl")
+            model = IrisModel("nonexistent.onnx")
             with pytest.raises(FileNotFoundError):
                 model.load()
 
@@ -164,7 +165,7 @@ class TestEndToEnd:
 
         try:
             from src.data import load_iris_data, split_data
-            from src.model import IrisModel
+            from src.model import IrisModel, IrisTrainer, ModelPersistence
 
             # Load and split data
             X, y, target_names = load_iris_data()
@@ -172,17 +173,25 @@ class TestEndToEnd:
                 X, y, test_size=0.3, random_state=123
             )
 
-            # Train model
-            model = IrisModel("integrity_test.pkl")
-            model.train(X_train, y_train)
+            # Train model using IrisTrainer
+            trainer = IrisTrainer()
+            sklearn_model = trainer.train(X_train, y_train)
 
             # Evaluate
-            accuracy = model.evaluate(X_test, y_test)
+            accuracy = trainer.evaluate(sklearn_model, X_test, y_test)
             assert accuracy > 0.7  # Should perform reasonably well
 
-            # Save and reload
-            model.save()
-            new_model = IrisModel("integrity_test.pkl")
+            # Save as ONNX
+            model_path = "integrity_test.onnx"
+            persistence = ModelPersistence()
+            persistence.save_onnx_model(sklearn_model, model_path)
+            
+            # Load with IrisModel
+            model = IrisModel(model_path)
+            model.load()
+            
+            # Reload in new instance
+            new_model = IrisModel(model_path)
             new_model.load()
 
             # Test that reloaded model gives same results
@@ -203,7 +212,7 @@ class TestEndToEnd:
 
         try:
             from src.data import load_iris_data, split_data
-            from src.model import IrisModel
+            from src.model import IrisModel, IrisTrainer, ModelPersistence
 
             # Train and save model
             X, y, _ = load_iris_data()
@@ -211,12 +220,19 @@ class TestEndToEnd:
                 X, y, test_size=0.2, random_state=42
             )
 
-            model1 = IrisModel("persistence_test.pkl")
-            model1.train(X_train, y_train)
-            model1.save()
+            trainer = IrisTrainer()
+            sklearn_model = trainer.train(X_train, y_train)
+            
+            model_path = "persistence_test.onnx"
+            persistence = ModelPersistence()
+            persistence.save_onnx_model(sklearn_model, model_path)
+
+            # Load in first session
+            model1 = IrisModel(model_path)
+            model1.load()
 
             # Simulate new session by creating new model instance
-            model2 = IrisModel("persistence_test.pkl")
+            model2 = IrisModel(model_path)
             model2.load()
 
             # Test predictions are identical
@@ -238,7 +254,7 @@ class TestIntegration:
     def test_data_model_integration(self):
         """Test integration between data loading and model training."""
         from src.data import load_iris_data, split_data
-        from src.model import IrisModel
+        from src.model import IrisTrainer
 
         # Load data
         X, y, target_names = load_iris_data()
@@ -249,27 +265,35 @@ class TestIntegration:
         )
 
         # Train model
-        model = IrisModel()
-        model.train(X_train, y_train)
+        trainer = IrisTrainer()
+        model = trainer.train(X_train, y_train)
 
         # Evaluate
-        accuracy = model.evaluate(X_test, y_test)
+        accuracy = trainer.evaluate(model, X_test, y_test)
 
         # Verify reasonable performance
         assert accuracy > 0.75
         assert len(target_names) == 3
 
-    def test_model_api_contract(self):
+    def test_model_api_contract(self, tmp_path):
         """Test that model output matches API expectations."""
-        from src.model import IrisModel
+        from src.model import IrisModel, IrisTrainer, ModelPersistence
         from src.data import load_iris_data, split_data
 
         # Train a model
         X, y, _ = load_iris_data()
         X_train, X_test, y_train, y_test = split_data(X, y, test_size=0.2)
 
-        model = IrisModel()
-        model.train(X_train, y_train)
+        trainer = IrisTrainer()
+        sklearn_model = trainer.train(X_train, y_train)
+        
+        # Save and load as ONNX
+        model_path = tmp_path / "api_contract_model.onnx"
+        persistence = ModelPersistence()
+        persistence.save_onnx_model(sklearn_model, str(model_path))
+        
+        model = IrisModel(str(model_path))
+        model.load()
 
         # Test various inputs
         test_cases = [
@@ -282,15 +306,15 @@ class TestIntegration:
             prediction, class_name = model.predict(features)
 
             # Verify contract
-            assert isinstance(prediction, int)
+            assert isinstance(prediction, (int, np.integer))
             assert isinstance(class_name, str)
             assert 0 <= prediction <= 2
             assert class_name in ["setosa", "versicolor", "virginica"]
 
-    def test_configuration_consistency(self):
+    def test_configuration_consistency(self, tmp_path):
         """Test that configurations are consistent across components."""
-        from src.data import load_iris_data
-        from src.model import IrisModel
+        from src.data import load_iris_data, split_data
+        from src.model import IrisModel, IrisTrainer, ModelPersistence
 
         # Load data
         X, y, target_names = load_iris_data()
@@ -302,11 +326,18 @@ class TestIntegration:
         assert model.target_names == target_names
 
         # Train and check predictions use correct names
-        from src.data import split_data
-
         X_train, X_test, y_train, y_test = split_data(X, y, test_size=0.2)
 
-        model.train(X_train, y_train)
+        trainer = IrisTrainer()
+        sklearn_model = trainer.train(X_train, y_train)
+        
+        model_path = tmp_path / "config_test_model.onnx"
+        persistence = ModelPersistence()
+        persistence.save_onnx_model(sklearn_model, str(model_path))
+        
+        model = IrisModel(str(model_path))
+        model.load()
+        
         prediction, class_name = model.predict(X_test[0])
 
         assert class_name == target_names[prediction]
