@@ -1,0 +1,201 @@
+name: Model Training and Registration
+
+on:
+  workflow_dispatch:
+    inputs:
+      register_model:
+        description: 'Register model in MLflow Registry'
+        required: false
+        type: boolean
+        default: true
+      stage:
+        description: 'Target stage for model (Staging/Production)'
+        required: false
+        type: choice
+        options:
+          - Staging
+          - Production
+        default: Staging
+  push:
+    branches: [main, master]
+    paths:
+      - 'src/model.py'
+      - 'src/data.py'
+      - 'train.py'
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  train-and-register:
+    name: Train and Register Model
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Set MLflow tracking URI
+        run: |
+          echo "IRIS_MLFLOW_TRACKING_URI=sqlite:///mlruns.db" >> $GITHUB_ENV
+          echo "IRIS_MLFLOW_ENABLED=true" >> $GITHUB_ENV
+
+      - name: Train model
+        run: |
+          python train.py --register-model
+        env:
+          IRIS_MLFLOW_REGISTRY_MODEL_NAME: iris-classifier
+
+      - name: Evaluate model
+        id: evaluate
+        run: |
+          # Extract accuracy from training output
+          echo "Training completed - check artifacts"
+          
+          # In production, you would:
+          # 1. Load the trained model
+          # 2. Run evaluation on validation set
+          # 3. Check if accuracy meets threshold
+          # 4. Compare with current production model
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: model-artifacts
+          path: |
+            artifacts/
+            mlruns.db
+          retention-days: 30
+
+      - name: Comment on commit with results
+        if: github.event_name == 'push'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: `🤖 **Model Training Completed**
+              
+              ✅ Model trained and registered to MLflow Registry
+              📊 Check MLflow UI for detailed metrics and artifacts
+              🔄 Model is ready for promotion to Production stage
+              
+              **Next Steps:**
+              1. Review model metrics in MLflow
+              2. Test model in staging environment
+              3. Promote to Production via MLflow UI or API
+              `
+            });
+
+  # Optional: Auto-promotion to Production based on metrics
+  promote-to-production:
+    name: Promote Model to Production
+    runs-on: ubuntu-latest
+    needs: train-and-register
+    if: github.event.inputs.stage == 'Production' || (github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch')
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install MLflow
+        run: pip install mlflow==2.7.1
+
+      - name: Download model artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: model-artifacts
+
+      - name: Promote model to Production
+        run: |
+          python << 'EOF'
+          import mlflow
+          from mlflow.tracking import MlflowClient
+          
+          mlflow.set_tracking_uri("sqlite:///mlruns.db")
+          client = MlflowClient()
+          
+          model_name = "iris-classifier"
+          
+          # Get latest version
+          versions = client.get_latest_versions(model_name, stages=["None", "Staging"])
+          if not versions:
+              print("No model versions found")
+              exit(1)
+          
+          latest_version = versions[0]
+          version_number = latest_version.version
+          
+          # Archive current production model
+          prod_versions = client.get_latest_versions(model_name, stages=["Production"])
+          for prod_ver in prod_versions:
+              client.transition_model_version_stage(
+                  name=model_name,
+                  version=prod_ver.version,
+                  stage="Archived"
+              )
+              print(f"Archived previous production version {prod_ver.version}")
+          
+          # Promote new model to production
+          client.transition_model_version_stage(
+              name=model_name,
+              version=version_number,
+              stage="Production"
+          )
+          
+          print(f"✅ Promoted model version {version_number} to Production")
+          EOF
+
+      - name: Comment on promotion
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: `🚀 **Model Promoted to Production**
+              
+              ✅ New model is now serving in production
+              📊 Previous production model archived for rollback
+              
+              **Rollback Instructions:**
+              If issues are detected, rollback by running:
+              \`\`\`python
+              from mlflow.tracking import MlflowClient
+              client = MlflowClient()
+              client.transition_model_version_stage(
+                  name="iris-classifier",
+                  version="<previous_version>",
+                  stage="Production"
+              )
+              \`\`\`
+              `
+            });

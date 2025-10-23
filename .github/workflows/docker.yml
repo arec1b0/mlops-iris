@@ -58,9 +58,6 @@ jobs:
           flags: unittests
           name: codecov-umbrella
 
-      - name: Train model (integration test)
-        run: python train.py --no-mlflow
-
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest

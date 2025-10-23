@@ -67,7 +67,7 @@ class TestAPIEndpoints:
         assert "version" in data
         assert "endpoints" in data
         assert isinstance(data["endpoints"], dict)
-        assert len(data["endpoints"]) >= 3  # At least GET /, GET /health, POST /predict
+        assert len(data["endpoints"]) >= 4  # GET /, GET /health, GET /metadata, POST /predict
 
     def test_health_endpoint_no_model(self, client):
         """Test health endpoint when model is not available."""
@@ -83,8 +83,12 @@ class TestAPIEndpoints:
         """Test health endpoint when model is available."""
         with patch("src.api.main.get_model") as mock_get_model:
             mock_model = MagicMock()
-            mock_model.model = "mocked_model"
+            mock_model.onnx_session = "mocked_model"
             mock_model.target_names = ["setosa", "versicolor", "virginica"]
+            mock_model.get_model_info.return_value = {
+                "model_version": "1",
+                "model_source": "file:artifacts/model.onnx"
+            }
             mock_get_model.return_value = mock_model
 
             response = client.get("/health")
@@ -94,6 +98,42 @@ class TestAPIEndpoints:
             assert health_data["status"] == "healthy"
             assert health_data["model_loaded"] is True
             assert len(health_data["target_classes"]) == 3
+            assert "model_version" in health_data
+            assert "model_source" in health_data
+
+    def test_metadata_endpoint(self, client):
+        """Test metadata endpoint returns model and deployment info."""
+        with patch("src.api.main.get_model") as mock_get_model:
+            mock_model = MagicMock()
+            mock_model.get_model_info.return_value = {
+                "model_version": "1",
+                "model_source": "registry:iris-classifier/Production/v1",
+                "registry_name": "iris-classifier",
+                "registry_stage": "Production"
+            }
+            mock_get_model.return_value = mock_model
+
+            response = client.get("/metadata")
+            assert response.status_code == 200
+
+            data = response.json()
+            assert "model" in data
+            assert "deployment" in data
+            assert "config" in data
+            
+            # Check model info
+            assert data["model"]["version"] == "1"
+            assert data["model"]["source"] == "registry:iris-classifier/Production/v1"
+            assert data["model"]["registry_name"] == "iris-classifier"
+            
+            # Check deployment info
+            assert "git_commit" in data["deployment"]
+            assert "api_version" in data["deployment"]
+            assert "timestamp" in data["deployment"]
+            
+            # Check config
+            assert "mlflow_tracking_uri" in data["config"]
+            assert "mlflow_use_registry" in data["config"]
 
     def test_predict_endpoint_invalid_input(self, client):
         """Test prediction with various invalid inputs."""
@@ -130,6 +170,10 @@ class TestAPIEndpoints:
         with patch("src.api.main.get_model") as mock_get_model:
             mock_model = mock_get_model.return_value
             mock_model.predict.return_value = mock_prediction
+            mock_model.get_model_info.return_value = {
+                "model_version": "1",
+                "model_source": "file:artifacts/model.onnx"
+            }
 
             response = client.post("/predict", json={"features": sample_features})
             assert response.status_code == 200
@@ -151,6 +195,10 @@ class TestAPIEndpoints:
             with patch("src.api.main.get_model") as mock_get_model:
                 mock_model = mock_get_model.return_value
                 mock_model.predict.return_value = (expected_pred, expected_class)
+                mock_model.get_model_info.return_value = {
+                    "model_version": "1",
+                    "model_source": "file:artifacts/model.onnx"
+                }
 
                 response = client.post("/predict", json={"features": features})
                 assert response.status_code == 200
@@ -186,6 +234,10 @@ class TestAPIEndpoints:
                     1,
                     "versicolor",
                 )  # Some valid response
+                mock_model.get_model_info.return_value = {
+                    "model_version": "1",
+                    "model_source": "file:artifacts/model.onnx"
+                }
 
                 response = client.post("/predict", json={"features": features})
                 assert response.status_code == 200
@@ -199,6 +251,10 @@ class TestAPIEndpoints:
         with patch("src.api.main.get_model") as mock_get_model:
             mock_model = mock_get_model.return_value
             mock_model.predict.return_value = (1, "versicolor")
+            mock_model.get_model_info.return_value = {
+                "model_version": "1",
+                "model_source": "file:artifacts/model.onnx"
+            }
 
             response = client.post("/predict", json={"features": sample_features})
             assert response.status_code == 200
@@ -246,6 +302,10 @@ class TestPredictionRequestValidation:
             with patch("src.api.main.get_model") as mock_get_model:
                 mock_model = mock_get_model.return_value
                 mock_model.predict.return_value = (0, "setosa")
+                mock_model.get_model_info.return_value = {
+                    "model_version": "1",
+                    "model_source": "file:artifacts/model.onnx"
+                }
 
                 response = client.post("/predict", json=request_data)
                 assert response.status_code == 200
@@ -262,6 +322,10 @@ class TestPredictionRequestValidation:
         with patch("src.api.main.get_model") as mock_get_model:
             mock_model = mock_get_model.return_value
             mock_model.predict.return_value = (0, "setosa")
+            mock_model.get_model_info.return_value = {
+                "model_version": "1",
+                "model_source": "file:artifacts/model.onnx"
+            }
 
             response = client.post("/predict", json=request_data)
             assert response.status_code == 200
@@ -278,6 +342,10 @@ class TestPredictionRequestValidation:
             with patch("src.api.main.get_model") as mock_get_model:
                 mock_model = mock_get_model.return_value
                 mock_model.predict.return_value = (0, "setosa")
+                mock_model.get_model_info.return_value = {
+                    "model_version": "1",
+                    "model_source": "file:artifacts/model.onnx"
+                }
 
                 response = client.post("/predict", json=request_data)
                 assert response.status_code == 200
@@ -333,6 +401,10 @@ class TestAPIPerformance:
         with patch("src.api.main.get_model") as mock_get_model:
             mock_model = mock_get_model.return_value
             mock_model.predict.return_value = (0, "setosa")
+            mock_model.get_model_info.return_value = {
+                "model_version": "1",
+                "model_source": "file:artifacts/model.onnx"
+            }
 
             start_time = time.time()
             response = client.post("/predict", json={"features": sample_features})
@@ -353,6 +425,10 @@ class TestAPIPerformance:
                 with patch("src.api.main.get_model") as mock_get_model:
                     mock_model = mock_get_model.return_value
                     mock_model.predict.return_value = (0, "setosa")
+                    mock_model.get_model_info.return_value = {
+                        "model_version": "1",
+                        "model_source": "file:artifacts/model.onnx"
+                    }
 
                     response = client.post(
                         "/predict", json={"features": sample_features}
@@ -388,8 +464,12 @@ class TestAPIIntegration:
         # First check health
         with patch("src.api.main.get_model") as mock_get_model:
             mock_model = mock_get_model.return_value
-            mock_model.model = "test_model"
+            mock_model.onnx_session = "test_model"
             mock_model.target_names = ["setosa", "versicolor", "virginica"]
+            mock_model.get_model_info.return_value = {
+                "model_version": "1",
+                "model_source": "file:artifacts/model.onnx"
+            }
 
             # Health check
             response = client.get("/health")
@@ -411,6 +491,10 @@ class TestAPIIntegration:
         with patch("src.api.main.get_model") as mock_get_model:
             mock_model = mock_get_model.return_value
             mock_model.predict.return_value = (0, "setosa")
+            mock_model.get_model_info.return_value = {
+                "model_version": "1",
+                "model_source": "file:artifacts/model.onnx"
+            }
 
             # Make multiple requests
             responses = []

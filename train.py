@@ -30,6 +30,10 @@ def main():
     parser.add_argument(
         "--no-mlflow", action="store_true", help="Disable MLflow logging"
     )
+    parser.add_argument(
+        "--register-model", action="store_true", 
+        help="Register model in MLflow Model Registry"
+    )
 
     args = parser.parse_args()
 
@@ -48,19 +52,22 @@ def main():
 
     # Train and save model
     print("Training model...")
-    accuracy, run_id = train_and_save_model(
+    accuracy, run_id, model_version = train_and_save_model(
         X_train,
         X_test,
         y_train,
         y_test,
         model_path=args.model_path,
         use_mlflow=not args.no_mlflow,
+        register_model=args.register_model,
     )
 
     print("\nTraining completed!")
     print(f"Accuracy: {accuracy:.2f}")
     if run_id:
         print(f"MLflow run ID: {run_id}")
+    if model_version:
+        print(f"Model registered as version: {model_version}")
     print(f"Model saved to: {args.model_path}")
 
 

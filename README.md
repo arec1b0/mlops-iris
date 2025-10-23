@@ -15,9 +15,11 @@ A production-ready MLOps project for Iris flower classification using **scikit-l
 - ⚙️ **Centralized Configuration**: Environment-based settings with validation
 - 🧪 **Comprehensive Testing**: 98%+ code coverage with unit, integration, and performance tests
 - 🐳 **Multi-stage Docker**: Optimized production builds with security scanning
-- 📊 **MLflow Integration**: Complete experiment tracking and model lifecycle management
-- 🔄 **CI/CD Pipeline**: Automated quality checks, security scanning, and deployment
-- 📈 **Production Monitoring**: Health checks, structured logging, and metrics collection
+- 📊 **MLflow Model Registry**: Version control, stage-based deployment, and safe rollback
+- 🔄 **Separated CI/CD Pipeline**: CI for testing, CD for model training and deployment
+- 📈 **Drift Monitoring**: Structured JSON logging for data and concept drift detection
+- 🔙 **Safe Rollback**: Instant model version rollback via MLflow Registry
+- 🔍 **Model Versioning**: Track model versions, sources, and git commits in production
 
 ## 📁 Project Structure
 
@@ -98,8 +100,11 @@ pip install -r requirements.txt
 ### 2. Train the Model
 
 ```bash
-# Train with default settings
+# Train with default settings (saves locally)
 python train.py
+
+# Train and register in MLflow Model Registry
+python train.py --register-model
 
 # Or with custom options
 python train.py --model-path artifacts/my_model.onnx --test-size 0.3 --no-mlflow
@@ -112,11 +117,17 @@ This will:
 - ✅ Evaluate on test data (typically 95-97% accuracy)
 - 💾 Save the model securely in ONNX format to `artifacts/model.onnx`
 - 📊 Log metrics and artifacts to MLflow (if enabled)
+- 🏷️ Register model in MLflow Model Registry (with `--register-model` flag)
 
 ### 3. Start the API Server
 
 ```bash
-# Start the FastAPI server
+# Start the FastAPI server (loads from local file)
+python run_api.py
+
+# Load model from MLflow Registry (Production stage)
+export IRIS_MLFLOW_USE_REGISTRY=true
+export IRIS_MLFLOW_REGISTRY_STAGE=Production
 python run_api.py
 
 # Or with custom options
@@ -154,7 +165,8 @@ Once the API is running, visit `http://localhost:8000/docs` for interactive Swag
 | Method | Endpoint | Description | Request Body | Response |
 |--------|----------|-------------|--------------|----------|
 | `GET` | `/` | API information and available endpoints | None | API metadata |
-| `GET` | `/health` | Health check with model status | None | Service health status |
+| `GET` | `/health` | Health check with model status and version | None | Service health status |
+| `GET` | `/metadata` | Model version, source, and deployment info | None | Model metadata |
 | `POST` | `/predict` | Make predictions on iris features | `PredictionRequest` | `PredictionResponse` |
 
 ### 📥 Request Format
@@ -371,15 +383,115 @@ python run_api.py --model-path custom_artifacts/my_model.pkl
 python run_api.py --reload
 ```
 
-## MLflow Tracking
+## 🎯 MLOps Features
 
-The project uses MLflow for experiment tracking:
+This project implements production-grade MLOps practices for drift monitoring, model versioning, and safe rollback. For comprehensive documentation, see **[docs/MLOPS.md](docs/MLOPS.md)**.
+
+### Drift Monitoring
+
+All predictions are logged in structured JSON format for monitoring:
+
+```json
+{
+  "timestamp": "2025-10-23T12:34:56.789Z",
+  "level": "INFO",
+  "event": "prediction",
+  "features": {"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2},
+  "prediction": {"class_id": 0, "class_name": "setosa"},
+  "model": {"version": "1", "source": "registry:iris-classifier/Production/v1"}
+}
+```
+
+These logs can be integrated with:
+- **Loki + Grafana** for visualization and alerting
+- **Elasticsearch + Kibana** for search and analytics
+- Custom monitoring solutions for drift detection
+
+### MLflow Model Registry
+
+Models are versioned and managed through MLflow Registry:
 
 ```bash
-# View MLflow UI
-mlflow ui
+# Train and register model
+python train.py --register-model
 
-# UI will be available at http://localhost:5000
+# Configure API to load from registry
+export IRIS_MLFLOW_USE_REGISTRY=true
+export IRIS_MLFLOW_REGISTRY_MODEL_NAME=iris-classifier
+export IRIS_MLFLOW_REGISTRY_STAGE=Production
+
+# Start API with registry model
+python run_api.py
+
+# View MLflow UI
+mlflow ui --backend-store-uri sqlite:///mlruns.db
+# UI available at http://localhost:5000
+```
+
+**Model Stages:**
+- **None** - Newly registered, not yet tested
+- **Staging** - Being tested in staging environment
+- **Production** - Serving live traffic
+- **Archived** - Previous versions, kept for rollback
+
+### Safe Rollback
+
+Rollback to previous model version in seconds:
+
+**Via MLflow UI:**
+1. Open MLflow UI: `mlflow ui`
+2. Navigate to Models → iris-classifier
+3. Select previous version → "Transition to Production"
+4. Restart API service
+
+**Via CLI:**
+```python
+from mlflow.tracking import MlflowClient
+
+client = MlflowClient()
+client.transition_model_version_stage(
+    name="iris-classifier",
+    version="1",  # Previous version
+    stage="Production"
+)
+```
+
+### Model Metadata Endpoint
+
+Track deployed model versions:
+
+```bash
+curl http://localhost:8000/metadata
+```
+
+Response includes:
+- Model version and source
+- Git commit hash
+- MLflow Registry information
+- Deployment timestamp
+
+### CI/CD Pipeline
+
+**Separated responsibilities:**
+
+- **CI Pipeline** (.github/workflows/docker.yml)
+  - Runs on pull requests
+  - Code quality checks (linting, formatting, type checking)
+  - Comprehensive test suite
+  - Security scanning
+  - **No model training in CI**
+
+- **CD Pipeline** (.github/workflows/train-model.yml)
+  - Runs on merge to main or manual trigger
+  - Trains new model
+  - Registers in MLflow Registry
+  - Uploads artifacts
+  - Optional auto-promotion to production
+
+**Trigger manual training:**
+```bash
+# Via GitHub Actions UI
+# Go to Actions → "Model Training and Registration" → Run workflow
 ```
 
 ## Model Performance
@@ -429,15 +541,42 @@ LOG_LEVEL=WARNING
 
 The API provides comprehensive health monitoring:
 
-- **Health Endpoint**: `GET /health` - Overall service health
+- **Health Endpoint**: `GET /health` - Overall service health with model version
+- **Metadata Endpoint**: `GET /metadata` - Model version, source, and git commit
 - **Readiness Probe**: Container readiness for traffic
 - **Liveness Probe**: Container health for restarts
 
+### Drift Monitoring
+
+**Structured Logging**: All predictions logged in JSON format with:
+- Input features (for data drift detection)
+- Predictions (for concept drift detection)
+- Model version and source
+- Timestamps
+
+**Integration Examples**:
+
+```bash
+# Loki + Grafana: Monitor prediction distribution
+{logger="iris_api"} | json | event="prediction"
+
+# Elasticsearch: Aggregate predictions
+POST /iris-predictions/_search
+{
+  "aggs": {
+    "prediction_dist": {
+      "terms": { "field": "prediction.class_name" }
+    }
+  }
+}
+```
+
 ### Metrics & Logging
 
-- **MLflow Integration**: Experiment tracking and metrics
-- **Structured Logging**: JSON format logs for better parsing
-- **Performance Metrics**: Response times and throughput tracking
+- **MLflow Model Registry**: Version control and experiment tracking
+- **Structured JSON Logs**: Production-ready logging format
+- **Model Versioning**: Track versions in production
+- **Git Commit Tracking**: Correlate deployments with code changes
 
 ### Docker Health Checks
 
@@ -446,9 +585,13 @@ The API provides comprehensive health monitoring:
 docker ps
 docker inspect <container_id> | grep -A 10 "Health"
 
-# View container logs
-docker logs <container_id>
+# View structured logs
+docker logs <container_id> | jq '.event'
 ```
+
+### Drift Detection Setup
+
+For detailed drift monitoring setup with Grafana/Kibana, see **[docs/MLOPS.md](docs/MLOPS.md)**.
 
 ## Security
 
