@@ -26,7 +26,9 @@ Returns the current health status of the API service.
 {
   "status": "healthy",
   "model_loaded": true,
-  "target_classes": ["setosa", "versicolor", "virginica"]
+  "target_classes": ["setosa", "versicolor", "virginica"],
+  "model_version": "1",
+  "model_source": "registry:iris-classifier/Production/v1"
 }
 ```
 
@@ -34,6 +36,46 @@ Returns the current health status of the API service.
 
 - `200`: Service is healthy
 - `500`: Service is unhealthy or model failed to load
+
+### Model Metadata
+
+**GET** `/metadata`
+
+Returns detailed metadata about the currently deployed model, including version, source, and deployment information. This endpoint is essential for monitoring and debugging in production.
+
+**Response:**
+
+```json
+{
+  "model": {
+    "version": "1",
+    "source": "registry:iris-classifier/Production/v1",
+    "registry_name": "iris-classifier",
+    "registry_stage": "Production"
+  },
+  "deployment": {
+    "git_commit": "abc123def456...",
+    "api_version": "1.0.0",
+    "timestamp": "2025-10-23T12:34:56.789012"
+  },
+  "config": {
+    "mlflow_tracking_uri": "sqlite:///mlruns.db",
+    "mlflow_use_registry": true
+  }
+}
+```
+
+**Use Cases:**
+
+- Verify which model version is currently serving
+- Track deployments and correlate with git commits
+- Monitor model source (file vs registry)
+- Debug production issues
+
+**Status Codes:**
+
+- `200`: Metadata retrieved successfully
+- `500`: Model not loaded or metadata unavailable
 
 ### Root Information
 
@@ -50,6 +92,7 @@ Returns basic information about the API.
   "endpoints": {
     "GET /": "This information",
     "GET /health": "Health check",
+    "GET /metadata": "Model metadata",
     "POST /predict": "Make prediction"
   }
 }
@@ -107,6 +150,9 @@ Makes a prediction on iris flower features.
 ```bash
 # Health check
 curl http://localhost:8000/health
+
+# Get model metadata
+curl http://localhost:8000/metadata
 
 # Make a prediction
 curl -X POST "http://localhost:8000/predict" \
@@ -186,14 +232,45 @@ Currently, there are no explicit rate limits implemented. However, the API is de
 - No sensitive data is logged in production
 - The API runs in a containerized environment with security best practices
 
-## Monitoring
+## Monitoring and Observability
 
-The API includes built-in health checks and can be monitored using:
+The API includes comprehensive monitoring capabilities:
 
-- Health endpoint: `/health`
-- Structured logging with configurable levels
-- MLflow integration for model performance tracking
-- Docker health checks for container orchestration
+### Endpoints for Monitoring
+
+- **Health endpoint**: `/health` - Service health and model status
+- **Metadata endpoint**: `/metadata` - Model version and deployment info
+
+### Structured Logging
+
+All predictions are logged in JSON format with:
+- Input features
+- Predictions
+- Model version
+- Timestamps
+
+Example log entry:
+```json
+{
+  "timestamp": "2025-10-23T12:34:56.789Z",
+  "level": "INFO",
+  "logger": "iris_api",
+  "message": "Prediction made",
+  "event": "prediction",
+  "features": {"sepal_length": 5.1, "sepal_width": 3.5, "petal_length": 1.4, "petal_width": 0.2},
+  "prediction": {"class_id": 0, "class_name": "setosa"},
+  "model": {"version": "1", "source": "registry:iris-classifier/Production/v1"}
+}
+```
+
+### Integration with Monitoring Systems
+
+- **Loki + Grafana**: Parse JSON logs for dashboards and alerts
+- **Elasticsearch + Kibana**: Index logs for search and visualization
+- **MLflow**: Track model performance and experiments
+- **Prometheus**: Expose metrics via custom exporters
+
+For detailed monitoring setup, see [docs/MLOPS.md](MLOPS.md)
 
 ## Development
 

@@ -9,6 +9,7 @@ Environment Variables:
     - IRIS_MODEL_PATH, IRIS_MODEL_DEFAULT_PATH
     - IRIS_TRAINING_TEST_SIZE, IRIS_TRAINING_MAX_ITER, IRIS_TRAINING_RANDOM_STATE
     - IRIS_MLFLOW_TRACKING_URI, IRIS_MLFLOW_EXPERIMENT_NAME, IRIS_MLFLOW_ENABLED
+    - IRIS_MLFLOW_REGISTRY_MODEL_NAME, IRIS_MLFLOW_REGISTRY_STAGE, IRIS_MLFLOW_USE_REGISTRY
     - IRIS_LOG_LEVEL, IRIS_LOG_FORMAT
     - IRIS_DATA_RANDOM_STATE
 
@@ -121,6 +122,21 @@ class Settings(BaseSettings):
         description="Enable MLflow experiment tracking and logging",
         examples=[True, False],
     )
+    mlflow_registry_model_name: str = Field(
+        default="iris-classifier",
+        description="Model name in MLflow Model Registry",
+        examples=["iris-classifier", "iris-model", "iris-prod"],
+    )
+    mlflow_registry_stage: str = Field(
+        default="Production",
+        description="MLflow Model Registry stage to load (None, Staging, Production, Archived)",
+        examples=["Production", "Staging", "None"],
+    )
+    mlflow_use_registry: bool = Field(
+        default=False,
+        description="Load model from MLflow Registry instead of local file",
+        examples=[True, False],
+    )
 
     # Logging Configuration
     log_level: str = Field(
@@ -227,6 +243,9 @@ def create_config_dict() -> dict[str, dict[str, any]]:
             "tracking_uri": settings.mlflow_tracking_uri,
             "experiment_name": settings.mlflow_experiment_name,
             "enabled": settings.mlflow_enabled,
+            "registry_model_name": settings.mlflow_registry_model_name,
+            "registry_stage": settings.mlflow_registry_stage,
+            "use_registry": settings.mlflow_use_registry,
         },
         "logging": {
             "level": settings.log_level,
