@@ -337,4 +337,4 @@ def train_and_save_model(
     # Save model as ONNX
     persistence.save_onnx_model(trained_model, save_path)
 
-    return accuracy, run_id, model_version
+    return accuracy, run_id or "", model_version
