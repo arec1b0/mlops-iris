@@ -350,7 +350,7 @@ class TestTrainingPipeline:
         X_train, X_test, y_train, y_test = iris_data_split
 
         model_path = tmp_path / "pipeline_model.onnx"
-        accuracy, run_id = train_and_save_model(
+        accuracy, run_id, model_version = train_and_save_model(
             X_train,
             X_test,
             y_train,
@@ -362,7 +362,33 @@ class TestTrainingPipeline:
         assert isinstance(accuracy, float)
         assert 0.8 <= accuracy <= 1.0
         assert run_id == ""  # No MLflow run ID when disabled
+        assert model_version is None  # No model version when MLflow is disabled
         assert model_path.exists()
+
+    def test_train_and_save_model_return_signature(self, tmp_path, iris_data_split):
+        """Test the return signature of the training pipeline."""
+        X_train, X_test, y_train, y_test = iris_data_split
+        model_path = tmp_path / "signature_test_model.onnx"
+
+        # Call the function
+        result = train_and_save_model(
+            X_train,
+            X_test,
+            y_train,
+            y_test,
+            model_path=str(model_path),
+            use_mlflow=False,
+        )
+
+        # Assert that the function returns a tuple of three elements
+        assert isinstance(result, tuple), "Function should return a tuple"
+        assert len(result) == 3, "Tuple should contain accuracy, run_id, and model_version"
+
+        # Unpack and check types
+        accuracy, run_id, model_version = result
+        assert isinstance(accuracy, float)
+        assert isinstance(run_id, str)
+        assert model_version is None
 
     def test_train_and_save_model_with_mlflow(self, tmp_path, iris_data_split):
         """Test training pipeline with MLflow enabled."""
@@ -378,17 +404,19 @@ class TestTrainingPipeline:
             mock_run.return_value.__enter__.return_value = MagicMock()
             mock_run.return_value.__enter__.return_value.info.run_id = "mlflow_run_123"
 
-            accuracy, run_id = train_and_save_model(
+            accuracy, run_id, model_version = train_and_save_model(
                 X_train,
                 X_test,
                 y_train,
                 y_test,
                 model_path=str(model_path),
                 use_mlflow=True,
+                register_model=False,
             )
 
             assert run_id == "mlflow_run_123"
             mock_run.assert_called_once()
+            assert model_version is None
 
     def test_pipeline_error_handling(self, tmp_path):
         """Test pipeline error handling."""
